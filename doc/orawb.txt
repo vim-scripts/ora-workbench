@@ -1,0 +1,233 @@
+*orawb.txt*      For Vim version 7.2.  Last change: 2010-09-21
+
+
+		  VIM REFERENCE MANUAL    by rkaltenthaler@yahooooo.com
+
+
+				*orawb* *oracle*
+				*sqlplus*
+This file describes the ORA-Workbench plugin for VIM.
+
+1. ORA-Workbench		|overview|
+2. Installation			|install|
+3. Starting			|starting| 
+4. General Commands		|commands|
+5. Object Tree			|tree| 
+6. SQL Worksheet		|worksheet|
+7. Source Buffer		|source|
+
+{not in Vi}
+
+==============================================================================
+1. ORA-Workbench						*overview*
+
+The ORA-Workbench is a VIM plugin to use VIM a development environment for
+ORACLE databases. 
+
+The ORA-Workbench shows the typical layout of modern development environment consisting
+of:
+	- the object tree on the left side
+	- a editing area in upper right 
+	- a "log" window in the lower right
+
+The workbench requires a Oracle Client installation (I'm calling SQLPLUS). The
+program "sqlplus" must be in the "path". 
+
+This plugin has been tested with:
+	- vim*7.2
+	- ORACLE*10.2
+	- MS Windows 2000
+	- SUSE Linux*10
+
+==============================================================================
+2. Installation of the Plugin					*install*
+
+	- create the directory ".vim" (for linux systems) or "vimfiles"
+	  (MS-Windows system) in your home directory.
+	- create the sub-directory "plugin"
+	- copy the file "orawb.vim" into the "plugin" directory
+	- create the sub-directory "doc"
+	- copy the file "orawb.txt" into the "dic" directory.
+	- start vim
+	- execute the command ":helptags ~/.vim/doc" (linux) or 
+	  ":helptags ~/vimfiles/doc" (Windows)
+	- make sure that "sqlplus" is in your operation system PATH.
+
+===============================================================================
+3. Starting the Workbench					*starting*
+
+All commands for the Workbench are starting with the letter Y. To start the
+workbench use the command
+
+:Ys[how]						*Yshow*
+
+This command starts the ORA-Workbench.
+
+The command will ask you for:
+	- the name of the database user
+	- the password of the database user
+	- the name of the database
+	- if you want to login as SYSDBA [Y|N]
+
+The values are used in an "sqlplus" connect - so - use a database name that
+sqlplus knows about....
+
+===============================================================================
+4. General Commands						*commands*
+
+The following commands are used for all windows of the ORA-Workbench:
+
+:Yo[pen]						*Yopen*
+
+Key mapping: yo
+
+This commands opens the database object. For objects that contain PL/SQL code,
+the source code is displayed in a new buffers. For tables of views, the
+ORA-Workbench shows the first 25 records in a new buffer. If you "open" a
+database user, the ORA-Workbench will switch the SQLPLUS connection to this
+user - so - make sure you know the password.
+
+:Yd[escribe]						*Ydescribe*
+
+Key mapping: yd
+
+The command calls the SQLPLUS DESCRIBE function to receive information about
+the object under the cursor. For tables or views, the command shows the
+columns.
+
+:Ym[ake]						*Ymake*
+
+Key mapping: ym
+
+The command (re) compiles an objects. When calling Ymake from the object tree,
+the selected object is re-compiled using the DDL command:
+	ALTER tt nn COMPILE
+where "tt" is the object type (like TRIGGER, FUNCTION...) and "nn" is the name
+of the object under the cursor.
+   
+:Yi[nvalid]						*Yinvalid*
+
+Key mapping: yi
+
+The command searches the current database schema for invalid object. All
+invalid objects are listed in a window.
+
+:Yh[ide]						*Yhide*
+To close the workbench, use the command Yhide.
+
+===============================================================================
+5. The Object Tree						*tree*
+
+The workbench displays the object tree in a window on the left hand side of
+the screen. The window show one fold for every type of object the workbench
+knows about:
+	- tables
+	- views
+	- functions
+	- procedures
+	- ....
+	
+The tree uses 'folds' - one for each type of object in your database. Use the
+commands:
+	zo - open fold
+	zc - close fold
+The tree has a key mapping to open and close the folds faster:
+	+  - open a fold
+	-  - close a fold.
+
+Invalid objects are marked with a (!) in the tree.
+
+The following commands can  be used in the tree:
+	:Yo[pen]	
+			FUNCTION	display the PL/SQL source code
+			PACKAGE		display the PL/SQL source code
+			PACKAGE BODY	display the PL/SQL source code
+			PROCEDURE	display the PL/SQL source code
+			TABLE		display the first 25 rows
+			TRIGGER		display the PL/SQL source code	
+			TYPE		display the PL/SQL source code
+			TYPE BODY	display the PL/SQL source code
+			VIEW		display the first 25 rows
+			USERS		switch the connection to the user
+
+	:Yd[escribe]	
+			CONSTRAINT      SELECT * FROM USER_CONSTRAINTS....
+			FUNCTION	display parameter names, types and
+					the type of the return value
+			INDEX		SELECT * FROM USER_INDEXES...
+			JOBS		SELECT * FROM USER_JOBS...	
+			PACKAGE		display all types, functions and
+					procedures of the package including
+					the call parameters.
+			PACKAGE BODY	see PACKAGE
+			PROCEDURE	display parameter names and types
+			QUEUE		SELECT * from USER_QUEUES... 
+					plus number of entries in the queue
+					table for each state.
+		  	SEQUENCE	SELECT * FROM USER_SEQUENCES...
+			SYNONYM		SELECT * FROM USER_SYNONYMS...
+			TABLE		display columns and data types
+			TYPE		display fields and their data types,
+					functions and the parameters
+			TYPE BODY	see TYPE
+			VIEW 		display columns and data types
+			
+	:Ym[ake]	
+			FUNCTION	ALTER FUNCTION ... COMPILE;
+			PACKAGE		ALTER PACKAGE ... COMPILE;
+			PACKAGE BODY	ALTER PACKAGE ... COMPILE BODY;
+			TYPE		ALTER TYPE ... COMPILE;
+			TYPE BODY	ALTER TYPE ... COMPILE BODY;
+			PROCEDURE	ALTER PROCEDURE ... COMPILE;
+			VIEW		ALTER VIEW ... COMPILE;
+			TRIGGER		ALTER TRIGGER ... COMPILE;
+
+	Yu[pdate]	update the content of the tree
+							
+===============================================================================
+6. The SQL Worksheet						*worksheet*
+
+The ORA-Workbench shows a window to enter your SQL commands and execute them.
+This is the 'Worksheet'. To execute the SQL in the worksheet, use the command
+	:Ym[ake] 
+or the key:
+	ym
+in 'normal' mode. The result is displayed in the log-window of the
+ORA-Workbench. 
+
+
+The worksheet window support the 'omni-complations' function CTRL-X-CTRL-O.
+The function is able to complete column name. Example:
+
+	SELECT b.* from books b where b.<-- press CTRL-X-CTRL-O here to get
+the column list for the table 'books'.
+
+Note: 	a) SQL statements must be terminated with a ';'
+ 	b) PL/SQL blocks must be terminated with a '/'
+	c) If you want to commit an operation, you have to include the 
+	   COMMIT into you SQL. 
+
+===============================================================================
+7. The Source Buffer						*source*
+
+The ORA-Workbench open a source buffer for each PL/SQL object (FUNCTION,
+PROCEDURE,...) that you read back from the database using the command
+	:Yo[pen]
+
+Within the source window you can use the following commands:
+
+	:Ym[ake]	- compile the source code. If the PL/SQL contains
+	ym		  errors, you get the error in the 'quickfix' list.
+
+	:Yd[escribe]	- describe the object under the cursor.
+	yd
+
+The worksheet window support the 'omni-complations' function CTRL-X-CTRL-O.
+The function is able to complete column name. Example:
+
+	SELECT b.author into v_name from books b where b.<-- press CTRL-X-CTRL-O here to get
+the column list for the table 'books'.
+	
+===============================================================================
+ vim:tw=78:ts=8:ft=help:norl:
+

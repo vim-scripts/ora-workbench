@@ -1,0 +1,20 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=3254
+
+The ORA-Workbench is a VIM plugin to use VIM a development environment for
+ORACLE databases. 
+
+The ORA-Workbench shows the typical layout of modern development environment consiting
+of:
+	- the object tree on the left side
+	- a editing area in upper right 
+	- a "log" window in the lower right
+
+The workbench requires a Oracle Client installation (I'm calling SQLPLUS). The
+program "sqlplus" must be in the "path". 
+
+This plugin has been tested with:
+	- vim*7.2
+	- ORACLE*10.2
+	- MS Windows 2000
+	- SUSE Linux*10
+

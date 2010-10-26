@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.0
+" Version: 1.1
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2010-09-25 23:21:35 +0200 (Sat, 25 Sep 2010) $
-" Id : $Id: orawb.vim 46 2010-09-25 21:21:35Z nikita $
+" Last Modified: $Date: 2010-10-25 11:35:26 +0200 (Mon, 25 Oct 2010) $
+" Id : $Id: orawb.vim 49 2010-10-25 09:35:26Z nikita $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -45,6 +45,8 @@ if exists("loaded_sqlrc")
 	delfunction WBChangeConnection2
 	delfunction WBDescribeObject
 	delfunction WBLoadObjectType
+	delfunction WBKeyMappingGeneral
+	delfunction WBKeyMappingCompiler
 	delfunction CreateTmpBuffer
 	delfunction CheckModified
 	delfunction CheckConnection
@@ -63,6 +65,7 @@ if exists("loaded_sqlrc")
 	delfunction SelectDataFromObject
 	delfunction CreateTmpFile
 	delfunction CreateTmpFilename
+	delfunction CreateTmpFilename2
 	delfunction SqlCompile
 	delfunction DisplaySynonym
 	delfunction DisplayQueue
@@ -110,8 +113,9 @@ let s:sqlerr=0 " SQLERR from SQLPLUS
 let s:wsbuffer=-1 " buffer number of the worksheet
 let s:wsfile = "__WORKSHEET.sql"
 let s:keywordfile = "__KEYWORDS.sql" " known keywords for the session
+let s:filenumber=1 " number for temp-file-names
 
-" -- cashed database stuff
+" -- cached database stuff
 let s:keywordsloaded=-1 " keywords are not loaded
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -450,6 +454,57 @@ function WBHide()
  	silent execute bufwinnr(currentBuffer) . 'wincmd w'
 endfunction
 
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" WBKeyMappingGeneral
+" ------------------------
+"
+"  Do this:
+"  - define the database shorts-cuts that are available to all buffers
+"
+"  This are:
+"  SqlMake(), DescribeObject(), WBShow(), WBHide(), 
+"  WBChangeConnection()
+"
+"
+function WBKeyMappingGeneral()
+	command! Ymake call WSSqlPlus()
+	command! Ydescribe call DescribeObject()
+	command! Yworksheet call WBInitWorksheet()
+	
+	" add key mappings
+	nmap ys y:call WBShow()<C-M>
+	nmap yh y:call WBHide()<C-M>
+	nmap yc y:call WBChangeConnection() <C-M>
+	nmap yw y:call WBInitWorksheet() <C-M>
+	nmap ym y:call WSSqlPlus()<C-M>
+	nmap yd y:call DescribeObject()<C-M>
+endfunction
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" WBKeyMappingCompiler
+" --------------------
+"
+"  Setup the keymappings for buffers  that can be compiled.
+"  This function is used for:
+"  Package Spec and Body
+"  Type Spec and Body
+"  
+function WBKeyMappingCompiler()
+	" add commands
+	command!-buffer Ymake call SqlMake()
+	command!-buffer Ydescribe call DescribeObject()
+	command!-buffer Yworksheet call WBInitWorksheet()
+	
+	" add key mappings
+	nmap <buffer> ys y:call WBShow()<C-M>
+	nmap <buffer> yh y:call WBHide()<C-M>
+	nmap <buffer> yc y:call WBChangeConnection() <C-M>
+	nmap <buffer> yw y:call WBInitWorksheet() <C-M>
+	nmap <buffer> ym y:call SqlMake()<C-M>
+	nmap <buffer> yd y:call DescribeObject()<C-M>
+endfunction
+
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Show the workbench
 "
@@ -509,18 +564,21 @@ function WBShow()
 		" fill the buffer
 		call WBLoad()
 		
+		" load commands that are available for all buffers
+		call WBKeyMappingGeneral()
+
 		" show the statusline with USER@HOST
 		let l:shortcuts=":[yd][ym][yo][yu]"
 		execute "setlocal  statusline=" . s:user . "@" . s:server . l:shortcuts
 		
-		" load commands
+		" load commands for the tree-buffer
 		command!-buffer Ymake call WBCompileObject()
 		command!-buffer Ydescribe call WBDescribeObject()
 		command!-buffer Yopen call WBOpenObject()
 		command!-buffer Yinvalid call ListInvalidObjects()
 		command!-buffer Yupdate call WBLoad()
 		
-		" load the short-cuts
+		" load the short-cuts for the tree-buffer
 		nmap <buffer> ys y:call WBShow() <C-M>
 		nmap <buffer> yh y:call WBHide() <C-M>
 		nmap <buffer> yc y:call WBChangeConnection() <C-M>
@@ -629,7 +687,7 @@ endfunction
 "
 function! WBInitWorksheet()
 	" Generate the filename
-  	let dd=CreateTmpFilename(s:wsfile)
+  	let dd=CreateTmpFilename2(s:wsfile)
 	
 	" check if the first buffer is the [No Name] buffer
 	if (bufwinnr(1) > 0) && (strlen(bufname(1))==0) 	
@@ -668,16 +726,7 @@ function! WBInitWorksheet()
 	execute "setlocal ignorecase"
 
 	" add commands
-	command!-buffer Ymake call WSSqlPlus()
-	command!-buffer Ydescribe call DescribeObject()
-	
-	" add key mappings
-	nmap <buffer> ys y:call WBShow()<C-M>
-	nmap <buffer> yh y:call WBHide()<C-M>
-	nmap <buffer> yc y:call WBChangeConnection() <C-M>
-	nmap <buffer> ym y:call WSSqlPlus()<C-M>
-	nmap <buffer> yd y:call DescribeObject()<C-M>
-
+	call WBKeyMappingGeneral()
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -697,14 +746,6 @@ function WBInitDescriptionWindow()
 	setlocal bufhidden=hide
 	setlocal noswapfile
 	
-	" add commands
-	command!-buffer Ydescribe call DescribeObject()
-	
-	" add key mappings
-	nmap <buffer> ys y:call WBShow()<C-M>
-	nmap <buffer> yh y:call WBHide()<C-M>
-	nmap <buffer> yc y:call WBChangeConnection() <C-M>
-	nmap <buffer> yd y:call DescribeObject()<C-M>
 endfunction
 
 
@@ -847,6 +888,20 @@ function! CreateTmpFilename(ObjectName)
   	return tmpfile
 endfunction
 	
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Create a temp filename. Use a index number
+" [in] Object name
+" [out] a file for the given object name
+"
+function! CreateTmpFilename2(ObjectName)
+	let tmpbase='/tmp'
+	if strlen($TEMP)>=1
+		let tmpbase=$TEMP
+	endif
+	let tmpfile = l:tmpbase .  '/' . s:server . '_' . s:user . '_' . s:filenumber . '_'  . a:ObjectName
+	let s:filenumber = s:filenumber+1
+  	return tmpfile
+endfunction
 
 function! CheckModified ()
 	"check the file is modified
@@ -1183,15 +1238,7 @@ function! GetSourceForObject(ObjectName,ObjectType)
 	execute "setlocal omnifunc=CompletTable"
 	
 	" add commands
-	command!-buffer Ymake call SqlMake()
-	command!-buffer Ydescribe call DescribeObject()
-	
-	" add key mappings
-	nmap <buffer> ys y:call WBShow()<C-M>
-	nmap <buffer> yh y:call WBHide()<C-M>
-	nmap <buffer> yc y:call WBChangeConnection() <C-M>
-	nmap <buffer> ym y:call SqlMake()<C-M>
-	nmap <buffer> yd y:call DescribeObject()<C-M>
+	call WBKeyMappingCompiler()
 endfunction
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""

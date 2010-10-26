@@ -115,6 +115,12 @@ invalid objects are listed in a window.
 :Yh[ide]						*Yhide*
 To close the workbench, use the command Yhide.
 
+:Yw[orksheet]						*Yworksheet*
+
+Key mapping: yw
+
+Open a new SQL worksheet.
+
 ===============================================================================
 5. The Object Tree						*tree*
 

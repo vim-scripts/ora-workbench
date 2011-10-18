@@ -1,4 +1,4 @@
-*orawb.txt*      For Vim version 7.2.  Last change: 2010-09-21
+*orawb.txt*      For Vim version 7.2.  Last change: 2011-10-13
 
 
 		  VIM REFERENCE MANUAL    by rkaltenthaler@yahooooo.com
@@ -7,7 +7,6 @@
 				*orawb* *oracle*
 				*sqlplus*
 This file describes the ORA-Workbench plugin for VIM.
-
 1. ORA-Workbench		|overview|
 2. Installation			|install|
 3. Starting			|starting| 
@@ -47,7 +46,7 @@ This plugin has been tested with:
 	- create the sub-directory "plugin"
 	- copy the file "orawb.vim" into the "plugin" directory
 	- create the sub-directory "doc"
-	- copy the file "orawb.txt" into the "dic" directory.
+	- copy the file "orawb.txt" into the "doc" directory.
 	- start vim
 	- execute the command ":helptags ~/.vim/doc" (linux) or 
 	  ":helptags ~/vimfiles/doc" (Windows)
@@ -79,7 +78,7 @@ The following commands are used for all windows of the ORA-Workbench:
 
 :Yo[pen]						*Yopen*
 
-Key mapping: yo
+Key mapping: Yo
 
 This commands opens the database object. For objects that contain PL/SQL code,
 the source code is displayed in a new buffers. For tables of views, the
@@ -89,25 +88,43 @@ user - so - make sure you know the password.
 
 :Yd[escribe]						*Ydescribe*
 
-Key mapping: yd
+Key mapping: Yd
 
 The command calls the SQLPLUS DESCRIBE function to receive information about
 the object under the cursor. For tables or views, the command shows the
 columns.
 
-:Ym[ake]						*Ymake*
+:Ym[ake] [parameters...]					*Ymake*
 
-Key mapping: ym
+Key mapping: Ym
 
-The command (re) compiles an objects. When calling Ymake from the object tree,
-the selected object is re-compiled using the DDL command:
+The command has different functions - depending on the window where is
+executes. 
+
+When called in a window with "SQL" statements, the statements are send to
+the database with "sqlplus". Any parameters are send to "sqlplus" as "call
+parameters" for the script.
+
+Example:
+If your windows contains:
+	select '&1' || ' ' || '&2' as NAME from dual;
+
+...and you enter the VIM command:
+	:Ymake Kalle Svensson
+
+...the ORACLE will respond with:
+	NAME
+	--------------
+	QUIT ROLLBACK
+
+When calling Ymake from the object tree, the selected object is re-compiled using the DDL command:
 	ALTER tt nn COMPILE
 where "tt" is the object type (like TRIGGER, FUNCTION...) and "nn" is the name
 of the object under the cursor.
    
 :Yi[nvalid]						*Yinvalid*
 
-Key mapping: yi
+Key mapping: Yi
 
 The command searches the current database schema for invalid object. All
 invalid objects are listed in a window.
@@ -117,7 +134,7 @@ To close the workbench, use the command Yhide.
 
 :Yw[orksheet]						*Yworksheet*
 
-Key mapping: yw
+Key mapping: Yw
 
 Open a new SQL worksheet.
 
@@ -197,7 +214,7 @@ The ORA-Workbench shows a window to enter your SQL commands and execute them.
 This is the 'Worksheet'. To execute the SQL in the worksheet, use the command
 	:Ym[ake] 
 or the key:
-	ym
+	Ym
 in 'normal' mode. The result is displayed in the log-window of the
 ORA-Workbench. 
 
@@ -223,10 +240,10 @@ PROCEDURE,...) that you read back from the database using the command
 Within the source window you can use the following commands:
 
 	:Ym[ake]	- compile the source code. If the PL/SQL contains
-	ym		  errors, you get the error in the 'quickfix' list.
+	Ym		  errors, you get the error in the 'quickfix' list.
 
 	:Yd[escribe]	- describe the object under the cursor.
-	yd
+	Yd
 
 The worksheet window support the 'omni-complations' function CTRL-X-CTRL-O.
 The function is able to complete column name. Example:

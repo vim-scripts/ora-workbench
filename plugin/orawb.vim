@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.1
+" Version: 1.2
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2010-10-25 11:35:26 +0200 (Mon, 25 Oct 2010) $
-" Id : $Id: orawb.vim 49 2010-10-25 09:35:26Z nikita $
+" Last Modified: $Date: 2011-10-16 16:14:29 +0200 (Sun, 16 Oct 2011) $
+" Id : $Id: orawb.vim 163 2011-10-16 14:14:29Z nikita $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -81,6 +81,7 @@ endif
 
 let loaded_sqlrc=1
 
+
 " Line continuation used here
 let s:cpo_save = &cpo
 set cpo&vim
@@ -141,7 +142,7 @@ command! YchangeConnection call WBChangeConnection()
 " Run the content of the current buffer as SQLPlus commands.
 " Send the output to the description window
 "
-function WSSqlPlus()
+function WSSqlPlus(...)
   	if CheckConnection () != 0
  		return -1
 	endif
@@ -174,9 +175,21 @@ function WSSqlPlus()
 	" Paste the text into the buffer
 	silent execute ":put! z"
 
+	" Build the command line. The result will look like this:
+	" sqlplus -S kalle/kalle@mydatabase @@ param1 param2 ....
+	
+	" Build the parameter part of the command line
+	let params = ""
+	if a:0 > 0
+		let params = " @@"
+		for x in a:000
+			let params = params . " " . x
+		endfor
+	endif	
+	
 	" Execute the range and display the result in buffer
 	" echo a:firstline "," a:lastline
-	silent execute '1,$!' . s:sqlcmd . '-S ' . s:connect_string
+	silent execute '1,$!' . s:sqlcmd . '-S ' . s:connect_string . params
 	normal 1G
  
  	" save SQL error message
@@ -468,17 +481,18 @@ endfunction
 "
 "
 function WBKeyMappingGeneral()
-	command! Ymake call WSSqlPlus()
+	command! -nargs=* Ymake call WSSqlPlus(<f-args>)
+"	command! Ymake call WSSqlPlus()
 	command! Ydescribe call DescribeObject()
 	command! Yworksheet call WBInitWorksheet()
 	
 	" add key mappings
-	nmap ys y:call WBShow()<C-M>
-	nmap yh y:call WBHide()<C-M>
-	nmap yc y:call WBChangeConnection() <C-M>
-	nmap yw y:call WBInitWorksheet() <C-M>
-	nmap ym y:call WSSqlPlus()<C-M>
-	nmap yd y:call DescribeObject()<C-M>
+	nmap Ys Y:call WBShow()<C-M>
+	nmap Yh Y:call WBHide()<C-M>
+	nmap Yc Y:call WBChangeConnection() <C-M>
+	nmap Yw Y:call WBInitWorksheet() <C-M>
+	nmap Ym Y:call WSSqlPlus()<C-M>
+	nmap Yd Y:call DescribeObject()<C-M>
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -497,12 +511,12 @@ function WBKeyMappingCompiler()
 	command!-buffer Yworksheet call WBInitWorksheet()
 	
 	" add key mappings
-	nmap <buffer> ys y:call WBShow()<C-M>
-	nmap <buffer> yh y:call WBHide()<C-M>
-	nmap <buffer> yc y:call WBChangeConnection() <C-M>
-	nmap <buffer> yw y:call WBInitWorksheet() <C-M>
-	nmap <buffer> ym y:call SqlMake()<C-M>
-	nmap <buffer> yd y:call DescribeObject()<C-M>
+	nmap <buffer> Ys Y:call WBShow()<C-M>
+	nmap <buffer> Yh Y:call WBHide()<C-M>
+	nmap <buffer> Yc Y:call WBChangeConnection() <C-M>
+	nmap <buffer> Yw Y:call WBInitWorksheet() <C-M>
+	nmap <buffer> Ym Y:call SqlMake()<C-M>
+	nmap <buffer> Yd Y:call DescribeObject()<C-M>
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -579,14 +593,14 @@ function WBShow()
 		command!-buffer Yupdate call WBLoad()
 		
 		" load the short-cuts for the tree-buffer
-		nmap <buffer> ys y:call WBShow() <C-M>
-		nmap <buffer> yh y:call WBHide() <C-M>
-		nmap <buffer> yc y:call WBChangeConnection() <C-M>
-		nmap <buffer> yd y:call WBDescribeObject() <C-M>
-		nmap <buffer> yo y:call WBOpenObject() <C-M>
-		nmap <buffer> yu y:call WBLoad() <C-M>
-		nmap <buffer> ym y:call WBCompileObject() <C-M>
-		nmap <buffer> yi y:call ListInvalidObjects() <C-M>
+		nmap <buffer> Ys Y:call WBShow() <C-M>
+		nmap <buffer> Yh Y:call WBHide() <C-M>
+		nmap <buffer> Yc Y:call WBChangeConnection() <C-M>
+		nmap <buffer> Yd Y:call WBDescribeObject() <C-M>
+		nmap <buffer> Yo Y:call WBOpenObject() <C-M>
+		nmap <buffer> Yu Y:call WBLoad() <C-M>
+		nmap <buffer> Ym Y:call WBCompileObject() <C-M>
+		nmap <buffer> Yi Y:call ListInvalidObjects() <C-M>
 		nmap <buffer> +  zo
 		nmap <buffer> -  zc
 	endif
@@ -708,6 +722,11 @@ function! WBInitWorksheet()
 	
 	" Cleanup  the buffer
 	execute "1,$d"
+
+	call append("0","set timing ON")
+	call append("0","--alter session set timed_statistics=true;")
+	call append("0","--set autotrace on explain STATISTICS")
+	call append("0","set linesize 1024")
 	call append("0","set serveroutput on size 1000000")
 	call append("0","-- Enter SqlPlus commands here. Press [ym] to execute.")
 	" execute "w"
@@ -1927,6 +1946,8 @@ augroup SqlPlus
 
 augroup end
 
+" Load key and command defintions
+call WBKeyMappingGeneral()
 " restore 'cpo'
 let &cpo = s:cpo_save
 unlet s:cpo_save

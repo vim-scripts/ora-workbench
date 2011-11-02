@@ -33,10 +33,10 @@ The workbench requires a Oracle Client installation (I'm calling SQLPLUS). The
 program "sqlplus" must be in the "path". 
 
 This plugin has been tested with:
-	- vim*7.2
-	- ORACLE*10.2
+	- vim*7.2, vim*7.3
+	- ORACLE*10.2, ORACLE,*11g
 	- MS Windows 2000
-	- SUSE Linux*10
+	- SUSE Linux*10, SUSE Linux*11.3
 
 ==============================================================================
 2. Installation of the Plugin					*install*
@@ -75,6 +75,22 @@ sqlplus knows about....
 4. General Commands						*commands*
 
 The following commands are used for all windows of the ORA-Workbench:
+
+:Yc[onncation] [connect string]				*Yconnection*
+
+This command alters the connect string that SQLPLUS will use to connect to the
+database whenever a database command is executed. If no connect string is
+supplied, the command will ask for:
+	- the username
+	- the password (hidden input)
+	- that name of the database 
+	- SYSDBA flag
+
+You can supply the connect string as parameter. In this case, the command will
+just ask for missing parameters (like the password). Example:
+	:Yconnection kalle/pelle@mydb AS SYSDBA
+	:Yconnection kalle@mydb
+	        
 
 :Yo[pen]						*Yopen*
 

@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.2
+" Version: 1.4
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2011-10-16 16:14:29 +0200 (Sun, 16 Oct 2011) $
-" Id : $Id: orawb.vim 163 2011-10-16 14:14:29Z nikita $
+" Last Modified: $Date: 2011-11-02 17:52:56 +0100 (Wed, 02 Nov 2011) $
+" Id : $Id: orawb.vim 178M 2011-11-02 16:52:56Z (local) $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -11,10 +11,8 @@
 " The main highlights of this script are:
 "
 " - command Ys[how] to login to an Oracle database an to show a tree of the
-" database objects
-"
+"   database objects
 " - command Yo[pen] to edit database objects in vim
-"
 " - command Ym[ake] to compile database objects.
 " 
 " This script requires an Oracle client installtion on your computer. The
@@ -47,6 +45,7 @@ if exists("loaded_sqlrc")
 	delfunction WBLoadObjectType
 	delfunction WBKeyMappingGeneral
 	delfunction WBKeyMappingCompiler
+	delfunction WBSqlPlus
 	delfunction CreateTmpBuffer
 	delfunction CheckModified
 	delfunction CheckConnection
@@ -56,7 +55,6 @@ if exists("loaded_sqlrc")
 	delfunction GetColumns
 	delfunction CompletTable
 	delfunction GetSourceForObject
-	delfunction WSSqlPlus
 	delfunction SqlPlus
 	delfunction ListInvalidObjects
 	delfunction SqlMake
@@ -76,6 +74,11 @@ if exists("loaded_sqlrc")
 	delfunction DisplayConstraint
 	delfunction DisplaySingleRecord
 	delfunction DisplaySingleRecordInternal
+	delfunction LoadAutoCommands
+	delfunction BuildConnectString
+	delfunction SetupStatusLine
+	delfunction ChangeConnection
+	delfunction ChangeConnection2
 	"  finish
 endif
 
@@ -100,32 +103,34 @@ let s:user=''	" Default Oracle user name
 let s:password=''	" Default Oracle password
 let s:server=''	" Default Oracle server to use
 let s:sysdba='N' " Default: user is not the SYSDBA
+let s:connect_string='' " Connection string
+let g:orawb_connect_status='?' " Status text
+
 let g:dateformat="'YYYYMMDD HH24MI'"	" Default date format to use
 let s:do_highlight_errors=1 " set this variable to 1 to highlight errors after compiling, set to 0 to turn it off
-let s:save_settings=1	"set this variable to 1 if you want the session info saved for next Vim session.
+let s:autocmd_loaded=0	"flag to remember if the VIM autocommands for ORACLE are loaded
 
 " -- Workbench stuff
-let s:treefile = "__WBTREE.sql"
+
+" Tree buffer
 let s:treebuffer=-1  " empty = tree-buffer not open 
 let s:treewidth=25 " width of the tree window
-let s:descfile = "__WBDESC.sql"
+let s:tree_reload=0 " flag: 1==the tree needs to be re-loaded
+
+" Description buffer
 let s:descbuffer=-1 " buffer number of the description buffer
 let s:sqlerr=0 " SQLERR from SQLPLUS
 let s:wsbuffer=-1 " buffer number of the worksheet
-let s:wsfile = "__WORKSHEET.sql"
 let s:keywordfile = "__KEYWORDS.sql" " known keywords for the session
 let s:filenumber=1 " number for temp-file-names
-
-" -- cached database stuff
-let s:keywordsloaded=-1 " keywords are not loaded
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Commands
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 command! -range=% Sql call SqlPlus ()
-command! Yshow call WBShow()
+command! -nargs=* Yshow call WBShow(<f-args>)
 command! Yhide call WBHide()
-command! YchangeConnection call WBChangeConnection()
+command! -nargs=* Yconnection call WBChangeConnection(<f-args>)
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Global key mappings 
@@ -137,12 +142,12 @@ command! YchangeConnection call WBChangeConnection()
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" WSSqlPlus - call SQLPlus for the current SQL worksheet
+" WBSqlPlus - call SQLPlus for the current SQL worksheet
 "
 " Run the content of the current buffer as SQLPlus commands.
 " Send the output to the description window
 "
-function WSSqlPlus(...)
+function WBSqlPlus(...)
   	if CheckConnection () != 0
  		return -1
 	endif
@@ -160,10 +165,6 @@ function WSSqlPlus(...)
 	" write the content of the worksheet to a buffer
 	silent execute "1,$y z"
 
-	" Write the worksheet to a tmp file
-  	"  let dd=CreateTmpFilename(s:wsfile)
- 	" silent execute ':w! ' . dd
- 
  	" remove the line with the QUIT command from the buffer
  	execute '$,$d'
 	" remove the lines with the format commands from the buffer
@@ -361,7 +362,6 @@ endfunction
 " Load the SQL workbench
 " 
 function! WBLoad()
-	" connect to ORACLE
 	if CheckConnection () != 0
 		return
 	endif
@@ -392,7 +392,7 @@ function! WBLoad()
 	" call input(getline(234))
 	let l:keywordline=search('\c#KEYWO','w')
 	" call input(string(l:keywordline))
-	execute ",$w " . l:keywordfilename
+	execute ",$w! " . l:keywordfilename
 	execute 'set dictionary+=' . keywordfilename
 
 	" delete the keywords from the tree
@@ -407,6 +407,9 @@ function! WBLoad()
 	" the end of a fold
 	set foldexpr=(indent(v:lnum)>indent(v:lnum+1)?'<'.string(indent(v:lnum)/4):(indent(v:lnum)<indent(v:lnum+1)?'>'.string(indent(v:lnum+1)/4):string(indent(v:lnum+1)/4)))    
 	set foldmethod=expr
+
+	" reload has been done
+	let s:tree_reload=0
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -439,32 +442,40 @@ function WBHide()
 		if bufwinnr(s:treebuffer) >  0
 			" close the window   
 			silent execute bufwinnr(s:treebuffer) . 'wincmd w'
-			silent execute 'wincmd c'
+			silent execute 'hide'
 		endif
 	endif	
 
 	" check the description window
 	if s:descbuffer > 0
-		" description is loaded. Check the window
-		if bufwinnr(s:descbuffer) > 0
-			"close the window
-			silent execute bufwinnr(s:descbuffer) . 'wincmd w'
-			silent execute 'wincmd c'
-		endif
+		try
+			" description is loaded. Check the window
+			if bufwinnr(s:descbuffer) > 0
+				"close the window
+				silent execute bufwinnr(s:descbuffer) . 'wincmd w'
+				silent execute 'hide'
+			endif
+		catch
+			"echo KL>can not close	
+		endtry	
 	endif
-
+	
 	" check the SQLWorksheet window
 	if s:wsbuffer > 0
-		" SQL worksheet loaded
-		if bufwinnr(s:wsbuffer) > 0
-			" close the window
-			silent execute bufwinnr(s:wsbuffer) . 'wincmd w'
-			silent execute 'wincmd c'
-		endif
+		try
+			" SQL worksheet loaded
+			if bufwinnr(s:wsbuffer) > 0
+				" close the window
+				silent execute bufwinnr(s:wsbuffer) . 'wincmd w'
+				silent execute 'hide'
+			endif
+		catch
+			"echo KL>can not close	
+		endtry	
 	endif
 
 	" go back to original window
- 	silent execute bufwinnr(currentBuffer) . 'wincmd w'
+ 	"" silent execute bufwinnr(currentBuffer) . 'wincmd w'
 endfunction
 
 
@@ -481,8 +492,7 @@ endfunction
 "
 "
 function WBKeyMappingGeneral()
-	command! -nargs=* Ymake call WSSqlPlus(<f-args>)
-"	command! Ymake call WSSqlPlus()
+	command! -nargs=* Ymake call WBSqlPlus(<f-args>)
 	command! Ydescribe call DescribeObject()
 	command! Yworksheet call WBInitWorksheet()
 	
@@ -491,7 +501,7 @@ function WBKeyMappingGeneral()
 	nmap Yh Y:call WBHide()<C-M>
 	nmap Yc Y:call WBChangeConnection() <C-M>
 	nmap Yw Y:call WBInitWorksheet() <C-M>
-	nmap Ym Y:call WSSqlPlus()<C-M>
+	nmap Ym Y:call WBSqlPlus()<C-M>
 	nmap Yd Y:call DescribeObject()<C-M>
 endfunction
 
@@ -543,17 +553,32 @@ endfunction
 " 	- split the windows
 " 	- create it (empty)
 "
-function WBShow()
+function WBShow(...)
+	" if we'v got parameter, they are used as the connect string for
+	" SQLPLUS
+	let l:params=""
+	if a:0 > 0
+		for x in a:000
+			let l:params=l:params . " " . x
+		endfor
+		call ChangeConnection2(l:params)
+	endif	
+	
+	" check if we can connect to ORACLE
+	if CheckConnection () != 0
+		return
+	endif
 	" remember the number of the current activ buffer
 	let currentBuffer=bufnr("%")
 
-	if buflisted(s:treebuffer) > 0
+	if bufexists(s:treebuffer) > 0
 		" the TREE buffer exist. Check, if the buffer is displayed in
 		" a window
 		if bufwinnr(s:treebuffer) <= 0
 			" the buffer is not visible. Display it
 			4wincmd k
 			4wincmd h
+			setlocal nosplitright
 			vsplit 
         		silent execute 'vertical resize '. string(s:treewidth)
 			silent execute 'b ' . s:treebuffer
@@ -561,11 +586,16 @@ function WBShow()
 			" the buffer is visible. Focus it
 			silent execute bufwinnr(s:treebuffer) . 'wincmd w'
 		endif
+		" if parameter have been supplied, the connection may have
+		" changed - we need to re-load the tree
+		if (a:0 > 0) || (s:tree_reload==1)
+			call WBLoad()
+		endif	
 	else
 		" the tree buffer is not existing
-		vsplit 
+		silent execute 'vnew'
         	silent execute 'vertical resize '. string(s:treewidth)
-		let s:treebuffer=CreateTmpFile(s:treefile)
+		let s:treebuffer=bufnr('%')
 		
 		" set window attributes 
 		set nowrap
@@ -574,6 +604,9 @@ function WBShow()
 		setlocal buftype=nofile
 		setlocal bufhidden=hide
 		setlocal noswapfile
+		setlocal filetype=sql
+		setlocal nobuflisted
+		setlocal noautochdir
 		
 		" fill the buffer
 		call WBLoad()
@@ -582,8 +615,7 @@ function WBShow()
 		call WBKeyMappingGeneral()
 
 		" show the statusline with USER@HOST
-		let l:shortcuts=":[yd][ym][yo][yu]"
-		execute "setlocal  statusline=" . s:user . "@" . s:server . l:shortcuts
+		execute "setlocal  statusline=[Yd][Ym][Yo][Yu]"
 		
 		" load commands for the tree-buffer
 		command!-buffer Ymake call WBCompileObject()
@@ -605,12 +637,11 @@ function WBShow()
 		nmap <buffer> -  zc
 	endif
 
-	
 	" go back to original window
  	execute bufwinnr(currentBuffer) . 'wincmd w'
 	
 	" Description window actions
-	if (s:descbuffer <=  0) || (buflisted(s:descbuffer) <= 0)
+	if (s:descbuffer <=  0) || (bufexists(s:descbuffer) <= 0)
 		call WBInitDescriptionWindow()
 	else
 		" check, if the window with the description buffer is open
@@ -624,7 +655,7 @@ function WBShow()
  	execute bufwinnr(currentBuffer) . 'wincmd w'
 	
 	" check if we need to show a new SQL worksheet
-	if (s:wsbuffer <= 0) || (buflisted(s:wsbuffer) <= 0)
+	if (s:wsbuffer <= 0) || (bufexists(s:wsbuffer) <= 0)
 		" show  the SQL worksheet
 		call WBInitWorksheet()
 	endif
@@ -637,8 +668,34 @@ endfunction
 "
 " 1. Call WBChangeConnection2 with the s:user value as parameter
 "
-function WBChangeConnection()
-	call WBChangeConnection2(s:user,"SCHEMA")
+function WBChangeConnection(...)
+	" Build the parameter part of the command line
+	let l:params = ""
+	" Check, if we have got parameters
+	if a:0 > 0
+		for x in a:000
+			let l:params=l:params . " " . x
+		endfor
+		call ChangeConnection2(l:params)
+		
+		" Re-load the tree if the tree is visible
+		if bufexists(s:treebuffer) > 0
+			" the TREE buffer exist. Check, if the buffer is displayed in
+			" a window
+			if bufwinnr(s:treebuffer) <= 0
+				" the buffer is not visible. - do nothing
+			else
+				" the buffer is visible. Focus it
+				silent execute bufwinnr(s:treebuffer) . 'wincmd w'
+				call WBLoad()
+			endif
+		endif
+	else	
+		call WBChangeConnection2(s:user,"SCHEMA")
+	endif	
+	
+
+	redraw!
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -671,10 +728,12 @@ function WBChangeConnection2(NewUser,ObjType)
 		endif
 	endif	
 
-	" get and stor new connection information
+	" get and store new connection information
 	call ChangeConnection(a:NewUser)
 
-	" Restore the tree
+	setlocal omnifunc=CompletTable
+
+	" Restore the tree if 
 	" the TREE buffer exist. Check, if the buffer is displayed in
 	" a window
 	if bufwinnr(s:treebuffer) > 0
@@ -683,8 +742,7 @@ function WBChangeConnection2(NewUser,ObjType)
 		call WBLoad()
 
 		" show the statusline with USER@HOST
-		let l:shortcuts=":[yd][ym][yo][yu]"
-		execute "setlocal  statusline=" . s:user . "@" . s:server . l:shortcuts
+		call SetupStatusLine("[Yd][Ym][Yo][Yu]")
 	endif
 
 endfunction
@@ -700,21 +758,19 @@ endfunction
 " 2.2 if not, create a new buffer for the SQL worksheet
 "
 function! WBInitWorksheet()
-	" Generate the filename
-  	let dd=CreateTmpFilename2(s:wsfile)
 	
 	" check if the first buffer is the [No Name] buffer
 	if (bufwinnr(1) > 0) && (strlen(bufname(1))==0) 	
 		" use the initial No Name buffer
 		execute "b 1"
-		execute "e " . dd
 	else
 		" Create a new window with a new buffer.
 		" Goto the upper right corner
 		4wincmd k
 		4wincmd l 
-		belowright 15split
-		execute "e " . dd
+		setlocal splitbelow
+		setlocal splitright
+		15new
 	endif
 
 	" Remember the buffer number
@@ -728,22 +784,20 @@ function! WBInitWorksheet()
 	call append("0","--set autotrace on explain STATISTICS")
 	call append("0","set linesize 1024")
 	call append("0","set serveroutput on size 1000000")
-	call append("0","-- Enter SqlPlus commands here. Press [ym] to execute.")
-	" execute "w"
-	setlocal buftype=nofile
+	call append("0","-- Enter SqlPlus commands here. Press [Ym] to execute.")
+
+	" Setup buffer options
+	setlocal buftype=nowrite
 	setlocal bufhidden=hide
 	setlocal noswapfile
+	setlocal filetype=sql
+	setlocal noautochdir
+	setlocal ignorecase
 	
-	" Setup the status line containing the user@host and the shortcuts
-	let l:shortcuts=":[ym]"
-	execute "setlocal  statusline=" . s:user . "@" . s:server . l:shortcuts
+	" show the statusline with USER@HOST
+	call SetupStatusLine("[Yd][Ym]")
+
 	
-	" setup omnicomplet function
-	execute "setlocal omnifunc=CompletTable"
-
-	" this buffer is not case-sensitive
-	execute "setlocal ignorecase"
-
 	" add commands
 	call WBKeyMappingGeneral()
 endfunction
@@ -755,18 +809,21 @@ function WBInitDescriptionWindow()
 	4wincmd j
 	4wincmd l
 	
-	belowright 10split
-	let s:descbuffer=CreateTmpFile(s:descfile)
+	belowright 10new
+	let s:descbuffer=bufnr('%')
 	set nowrap
 	set foldenable
 	set foldmethod=manual
 	set winfixheight
-	setlocal buftype=nofile
+	setlocal filetype=sql
+	setlocal buftype=nowrite
 	setlocal bufhidden=hide
 	setlocal noswapfile
+	setlocal noautochdir
 	
+	" show the statusline with USER@HOST
+	call SetupStatusLine("[Yd]")
 endfunction
-
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Load the the content of the given type 
@@ -937,11 +994,26 @@ function! CheckModified ()
 endfunction
 
 
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" CheckConnection
+"
+" Check, if all the parameters that we need to connect to the database
+" have been defined.
+"
+" We are checking for:
+" s:user
+" s:password
+" s:server
+" 
+" If one of this is missing, we prompt the user for it.
+" 
 function! CheckConnection ()
 	" Check to ensure the connection details are defined in the global
 	" variables
 	if exists ("s:user") == 0 || exists ("s:password") == 0 || exists ("s:server") == 0 || s:user == "" || s:password == "" || s:server == ""
-		call ChangeConnection (s:user)
+		if ChangeConnection (s:user) != 0
+			return -1
+		endif
 	endif
 	" if the variables are still not set return error
 	if exists ("s:user") == 0 || exists ("s:password") == 0 || exists ("s:server") == 0 || s:user == "" || s:password == "" || s:server == ""
@@ -956,6 +1028,31 @@ endfunction
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Create the connection string for SqlPlus from the script variable:
+" s:user
+" s:password
+" s:server
+" s:sysdba
+"
+" Parameter: -
+" return: name/passoword@server [AS SYSDBA]
+"
+function! BuildConnectString(user,password,server,sysdba)
+	let l:connect_string = a:user . '/' . a:password . '@' .  a:server
+
+	" check for sysdba mode
+	if a:sysdba == "Y"
+		let l:connect_string = l:connect_string . " AS SYSDBA"
+	endif
+	let s:connect_string=l:connect_string 
+	let g:orawb_connect_status=a:user.'@'.a:server
+
+	" remember that we will need to reload  the tree
+	let s:tree_reload=1
+endfunction
+
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Change the database connection
 "
 " Parameter: new user name
@@ -966,7 +1063,12 @@ function! ChangeConnection(NewUser)
 	exec 'let l:user = input ("Enter userid [' . s:user . ']: ")'
 	exec 'let l:password = inputsecret ("Enter Password [' . substitute (s:password, '.', '*', 'g') . ']: ")'
 	exec 'let l:server = input ("Enter Server [' . s:server . ']: ")'
-	exec 'let l:sysdba = input ("as SYSDBA (Y/N) [' . s:sysdba . ']: ")'
+	exec 'let l:sysdba = input ("as SYSDBA (Y/N/Q) [' . s:sysdba . ']: ")'
+	
+	" check for QUIT
+	if toupper(l:sysdba) == "Q" 
+		return -1
+	endif
 	if l:user != ""
 		let s:user = l:user
 	endif
@@ -980,12 +1082,134 @@ function! ChangeConnection(NewUser)
 		let s:sysdba = toupper(l:sysdba)
 	endif
 
-	let s:connect_string = s:user . '/' . s:password . '@' .  s:server
+	" setup s:connect_string and g:orawb_connect_status
+	call BuildConnectString(s:user,s:password,s:server,s:sysdba)
 
-	" check for sysdba mode
-	if s:sysdba == "Y"
-		let s:connect_string = s:connect_string . " AS SYSDBA"
+	" setup the autocommands for all buffer
+	call LoadAutoCommands()
+
+	return 0
+endfunction
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Change the database connection
+"
+" Parameter: SQLPLUS connect string - Examples
+"
+" kalle/kalle@mydatabase
+" kalle@mydatabase
+" kalle/kalle
+" kalle
+" kalle as SYSDBA
+"
+"
+" The function does this:
+"
+" Reset the username, the password and the connect options
+" s:user, s:password, s:sysdba
+"
+" Try to  get the following information from the connect string
+" 	- username
+" 	- password
+" 	- server
+" 	- sysdba
+" ...and  store the information in: s:user, s:password, s:sysdba, s:server
+"
+" Check, if one of the following pieces of information is missing:
+" 	- username
+" 	- password
+" 	- server
+" If so, prompt the user for this information and store it.
+"
+" Build a new s:connect_string
+"
+function! ChangeConnection2(SqlPlusConnectString)
+	let s:user=''
+	let s:password=''
+	let s:sysdba=''
+
+	let l:loginAs=''
+	let l:constr=a:SqlPlusConnectString
+
+	" remove leading blanks
+	let l:blanks=matchstr(l:constr,"^\[ ]\\+")
+	let l:constr=strpart(l:constr,strlen(l:blanks))
+
+	" get the user name
+	let s:user=matchstr(l:constr,"^\[^ /@]\\+")
+	" remove the user-name from the connect string
+ 	let l:constr=strpart(l:constr,strlen(s:user))	
+	
+	" now the connection string look like this:
+	" /mypassword			or
+	" /mypassword AS Sysdba		or
+	" /mypassword@mydb		or
+	" /mypassword@mydb AS Sysdba	or
+	" @mydb  			or
+	" @mydb AS Sysdba		or
+	"  AS Sysdba
+	"
+	" Check the first character to see which case we dealing with..
+	if l:constr[0] == "/"
+		" get the password
+		let l:constr=strpart(l:constr,1)
+		let s:password=matchstr(l:constr,"^\[^ @]\\+")
+		let l:constr=strpart(l:constr,strlen(s:password))
 	endif
+	
+	" now the connection string look like this:
+	" @mydb  			or
+	" @mydb AS Sysdba		or
+	"  AS Sysdba
+	"
+	" Check the first character to see which case we dealing with..
+	if l:constr[0]=="@"
+		" get the database name
+		let l:constr=strpart(l:constr,1)
+		let s:server=matchstr(l:constr,"^\[^ ]\\+")
+		let l:constr=strpart(l:constr,strlen(s:server))
+	endif
+
+	" now the connection string look like this:
+	"  AS Sysdba
+	"
+	" Check the first character to see which case we dealing with..
+	if l:constr[0] == ' '
+		" get the password
+		let l:constr=strpart(l:constr,1)
+		let l:loginAs=toupper(matchstr(l:constr,"^\[^ ]\\+"))
+		if l:loginAs=="SYSDBA"
+			let s:sysdba=true
+		endif	
+	endif
+
+	" check for missing parameter:
+	" -password
+	" -server
+	if s:password==""
+		exec 'let s:password = inputsecret ("Enter Password [' . substitute (s:password, '.', '*', 'g') . ']: ")'
+	endif
+	if s:server==""
+		exec 'let s:server = input ("Enter Server [' . s:server . ']: ")'
+	endif	
+
+	" setup s:connect_string and g:orawb_connect_status
+	call BuildConnectString(s:user,s:password,s:server,s:sysdba)
+	 
+	" setup the autocommands for all buffer
+	call LoadAutoCommands()
+
+endfunction
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Setup the status ling for the current buffer
+"
+" Parameters:
+" a:normalModeKeys	String with normal mode keys
+"
+function! SetupStatusLine(NormalModeKeys)
+	" show the statusline with USER@HOST
+	execute "setlocal  statusline=%{g:orawb_connect_status}:"  . a:NormalModeKeys
 endfunction
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -994,7 +1218,7 @@ endfunction
 function! SwitchToDesc()
 	" remember the number of the current activ buffer
 	let currentBuffer=bufnr("%")
-	if (s:descbuffer <=  0) ||(buflisted(s:descbuffer) <= 0)
+	if (s:descbuffer <=  0) ||(bufexists(s:descbuffer) <= 0)
 		call WBInitDescriptionWindow()
 	endif
 	" check, if the window with the description buffer is open
@@ -1234,7 +1458,8 @@ function! GetSourceForObject(ObjectName,ObjectType)
 	4wincmd k
 	4wincmd l
 
-	call CreateTmpBuffer("source_".a:ObjectName.".sql")
+	" call CreateTmpBuffer("source_".a:ObjectName.".sql")
+	new
 	call append (0, "Upper ('" . a:ObjectType . "');")
 	call append (0, 'and type = ')
 	call append (0, "Upper ('" . a:ObjectName . "') ")
@@ -1250,11 +1475,8 @@ function! GetSourceForObject(ObjectName,ObjectType)
 
 	call append ("$", "/")
 	1
-	w!
 	setlocal nomodified
-	
-	" setup omnicomplet function
-	execute "setlocal omnifunc=CompletTable"
+	setlocal filetype=sql
 	
 	" add commands
 	call WBKeyMappingCompiler()
@@ -1551,6 +1773,28 @@ function! SelectDataFromObject(ObjectName,ObjectType)
 	setlocal nomodified
 endfunction
 
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Load the VIM auto-commands for the workbench. We are using the following
+" auto-commands:
+"
+" omnifunc	BufAdd,BufNew	Setup a function to compleat column names
+"
+" Parameter :	-
+"
+" Do the following:
+" 1. check, if the variable s:autocmd_loaded is set to 1. if so, exit the
+" function
+" 2. set the variable s:autocmd_loaded to 1
+" 3. setup omnifunc for the event BufAdd
+" 4. setup omnifunc for the event BufNew
+"
+function! LoadAutoCommands() 
+	if s:autocmd_loaded != 1
+		let s:autocmd_loaded = 1
+		" autocmd BufEnter * echo "Kalle"
+		autocmd BufEnter * setlocal omnifunc=CompletTable
+	endif	
+endfunction
 
 function! SqlPlus (...) range
 " this function lets you 
@@ -1621,19 +1865,13 @@ endfunction
 "	dimension
 "	java classes
 "
-function! SqlMake ()
 " Assumes that the stored procedure code starts with "^create or replace..."
 " at the beginning of the line
-	
 "
 " Change the following settings (done in sql.vim ftplugin):
 " To use multiline error format of SQL*Plus
-" 	set efm=%E%l/%c%m,%C%m,%Z
-
-	"check the file is modified
-	if CheckModified () == -1
-		return
-	endif
+function! SqlMake ()
+	"set efm=%E%l/%c%m,%C%m,%Z
 
 	if CheckConnection () != 0
 		return
@@ -1654,7 +1892,7 @@ function! SqlMake ()
 	let &errorfile = CreateTmpFilename("sqlmake.err")
 	let l:sqlfile = CreateTmpFilename("sqltmp.sql")
 
-	"	delete the old errorfile
+	" delete the old errorfile
 	if filereadable (&errorfile)
 		call delete (&errorfile)
 	endif
@@ -1670,7 +1908,8 @@ function! SqlMake ()
 	"	show the error messages and to exit SQL*Plus after compilation is
 	"	finished
 	exec 'silent write! ' . l:sqlfile
-	exec 'silent edit ' . l:sqlfile
+	exec 'w!'
+	exec 'silent edit! ' . l:sqlfile
 	let l:tmp_buf = buffer_number("%")
 
 	" get the type of the object from the SQL text
@@ -1700,7 +1939,7 @@ function! SqlMake ()
 	elseif search(pbegin.'JAVA CLASS[ \t\n]\+','e') >= 1
 		let sqlType = "java class"
 	endif
-	echo sqlType
+	" echo sqlType
 	
 	" move to the next word. It contains the name of the object
 	let nameStartCol=get(getpos("."),2)
@@ -1729,7 +1968,6 @@ function! SqlMake ()
 
 	" compile the l:sqlfile in SQL*Plus
 	let l:command = s:sqlcmd . " -S -L " . s:connect_string . " @" .  l:sqlfile
-	"echo l:command
 	echohl MoreMsg
 	echo "Compiling..."
 	echohl None

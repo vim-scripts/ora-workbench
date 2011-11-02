@@ -13,8 +13,8 @@ The workbench requires a Oracle Client installation (I'm calling SQLPLUS). The
 program "sqlplus" must be in the "path". 
 
 This plugin has been tested with:
-	- vim*7.2
-	- ORACLE*10.2
+	- vim*7.2, vim*7.3
+	- ORACLE*10.2, ORACLE*11g
 	- MS Windows 2000
-	- SUSE Linux*10
+	- SUSE Linux*10, SUSE Linux*11
 

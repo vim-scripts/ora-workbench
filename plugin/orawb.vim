@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.4
+" Version: 1.5
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2011-11-02 17:52:56 +0100 (Wed, 02 Nov 2011) $
-" Id : $Id: orawb.vim 178M 2011-11-02 16:52:56Z (local) $
+" Last Modified: $Date: 2012-08-14 23:19:21 +0200 (Tue, 14 Aug 2012) $
+" Id : $Id: orawb.vim 267 2012-08-14 21:19:21Z nikita $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -49,7 +49,6 @@ if exists("loaded_sqlrc")
 	delfunction CreateTmpBuffer
 	delfunction CheckModified
 	delfunction CheckConnection
-	delfunction ChangeConnection
 	delfunction DescribeObject
 	delfunction DescribeNamedObject
 	delfunction GetColumns
@@ -1460,7 +1459,7 @@ function! GetSourceForObject(ObjectName,ObjectType)
 
 	" call CreateTmpBuffer("source_".a:ObjectName.".sql")
 	new
-	call append (0, "Upper ('" . a:ObjectType . "');")
+	call append (0, "Upper ('" . a:ObjectType . "') order by LINE;")
 	call append (0, 'and type = ')
 	call append (0, "Upper ('" . a:ObjectName . "') ")
 	call append (0, 'select text from user_source where name = ')
@@ -1851,6 +1850,17 @@ function! ListInvalidObjects ()
 	setlocal ts=8 nomodified
 endfunction
 
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Remove all marks from the current buffer
+"
+function! RemoveAllMarks(buffername)
+	let l:sign_count = 1000
+ 	while l:sign_count < 1100	
+		silent execute 'sign unplace ' . l:sign_count . ' buffer=' . bufnr(a:buffername)
+		let l:sign_count = l:sign_count + 1 
+	endwhile
+endfunction
+
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Compile a piece of PL/SQL code.
@@ -1898,18 +1908,18 @@ function! SqlMake ()
 	endif
 
 	" remove existing signs
-	let l:sign_count = 1000
- 	while l:sign_count < 1100	
-		silent execute 'sign unplace ' . l:sign_count . ' buffer=' . bufnr('%')
-		let l:sign_count = l:sign_count + 1 
-	endwhile
+	call RemoveAllMarks('%')
 
-	"	Copy the source file to a temporary SQL file and added SQL commands to
-	"	show the error messages and to exit SQL*Plus after compilation is
-	"	finished
-	exec 'silent write! ' . l:sqlfile
-	exec 'w!'
-	exec 'silent edit! ' . l:sqlfile
+	"Copy the source file to a temporary SQL file and added SQL commands to
+	"show the error messages and to exit SQL*Plus after compilation is
+	"finished
+	""exec 'silent write! ' . l:sqlfile
+	"" exec 'w!'
+	"" exec 'silent edit! ' . l:sqlfile
+	exec '1,$y q'
+	exec 'new ' . l:sqlfile
+	exec '1,$d'
+	normal "qP
 	let l:tmp_buf = buffer_number("%")
 
 	" get the type of the object from the SQL text
@@ -1939,7 +1949,6 @@ function! SqlMake ()
 	elseif search(pbegin.'JAVA CLASS[ \t\n]\+','e') >= 1
 		let sqlType = "java class"
 	endif
-	" echo sqlType
 	
 	" move to the next word. It contains the name of the object
 	let nameStartCol=get(getpos("."),2)
@@ -1956,7 +1965,6 @@ function! SqlMake ()
 		echo search('\(".\+"\)\|\([A-Z,_,a-z,0-9]\+\)/e','ce') 
 		return 
 	endif	
-	" echo sqlName . " of type " . sqlType
 	
 	" add show error at the end of SQL file
 	call append ("$", "set pagesize 0")
@@ -1968,14 +1976,13 @@ function! SqlMake ()
 
 	" compile the l:sqlfile in SQL*Plus
 	let l:command = s:sqlcmd . " -S -L " . s:connect_string . " @" .  l:sqlfile
-	echohl MoreMsg
+	"" echohl MoreMsg
 	echo "Compiling..."
-	echohl None
+	"" echohl None
 	let l:sqlout = system (l:command)
 	
 	"TODO check for v:shell_error
 
-	" echo l:sqlout
 	let l:error_exists = FormatErrorMessage (l:sqlout)
 
 	" go to the original alternate buffer
@@ -1983,6 +1990,7 @@ function! SqlMake ()
 
 	" delete the temporary SQL file and buffer
 	exec 'silent bwipeout! ' . l:tmp_buf
+	close
 	"++KL++	silent call delete ( l:sqlfile )
 	
 
@@ -1999,7 +2007,6 @@ function! SqlMake ()
 			let l:sign_count = 1000
 			while strlen (l:error_lines) > 1
 				let l:line_num = matchstr (l:error_lines, '[0-9]\+')
-				"echo 'l:line_num : ' l:line_num 
 				if l:line_num != ""
 					let l:sign_count = l:sign_count + 1
 					execute 'sign place ' . l:sign_count . ' line=' . l:line_num . ' name=SQLMakeError buffer=' . l:cur_buf
@@ -2016,9 +2023,9 @@ function! SqlMake ()
 		copen
 		norm 
 	else
-		echohl MoreMsg
-		echo "No Errors"
-		echohl None
+		""echohl MoreMsg
+		""echo "No Errors"
+		""echohl None
 	endif
 	let &errorfile = l:ef_save
 	norm 
@@ -2027,6 +2034,7 @@ function! SqlMake ()
 		" restore acd mode
 		let &acd=org_acd	
 	endif	
+	redraw
 endfunction
 
 
@@ -2172,15 +2180,17 @@ augroup SqlPlus
 "  au!
 "
 " This is to remove any error indicators that was added as part of SqlMake().
-	autocmd! BufWritePre,FileWritePre *.sql,*.pls
-	if has("signs")
-		autocmd BufWritePre,FileWritePre *.sql,*.pls normal :sign unplace *
-	else
-		autocmd BufWritePre,FileWritePre *.sql,*.pls normal :g/ --ERR\d*--/s///g
-	endif
+autocmd! BufWritePre,FileWritePre *.sql,*.pls
+if has("signs")
+	autocmd BufWritePre,FileWritePre *.sql,*.pls normal :sign unplace *
+else
+	autocmd BufWritePre,FileWritePre *.sql,*.pls normal :g/ --ERR\d*--/s///g
+endif
 
-	"  autocmd BufEnter *.iqd,*.sql,*.pls,afiedt.buf, source $VIM/user/sqlEnter.vim
-	"  autocmd BufLeave,WinLeave *.iqd,*.sql,*.pls,afiedt.buf source $VIM/user/sqlLeave.vim
+autocmd! BufNewFile,BufRead *.pkb,*.pks call WBKeyMappingCompiler()
+ 
+"  autocmd BufEnter *.iqd,*.sql,*.pls,afiedt.buf, source $VIM/user/sqlEnter.vim
+"  autocmd BufLeave,WinLeave *.iqd,*.sql,*.pls,afiedt.buf source $VIM/user/sqlLeave.vim
 
 augroup end
 

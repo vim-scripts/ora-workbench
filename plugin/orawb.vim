@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.5
+" Version: 1.6
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2012-08-14 23:19:21 +0200 (Tue, 14 Aug 2012) $
-" Id : $Id: orawb.vim 267 2012-08-14 21:19:21Z nikita $
+" Last Modified: $Date: 2012-12-24 17:33:32 +0100 (Mon, 24 Dec 2012) $
+" Id : $Id: orawb.vim 285 2012-12-24 16:33:32Z nikita $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -52,7 +52,10 @@ if exists("loaded_sqlrc")
 	delfunction DescribeObject
 	delfunction DescribeNamedObject
 	delfunction GetColumns
+	delfunction GetPackageFunctions
+	delfunction OmniComplet
 	delfunction CompletTable
+	delfunction CompletFunction
 	delfunction GetSourceForObject
 	delfunction SqlPlus
 	delfunction ListInvalidObjects
@@ -730,7 +733,7 @@ function WBChangeConnection2(NewUser,ObjType)
 	" get and store new connection information
 	call ChangeConnection(a:NewUser)
 
-	setlocal omnifunc=CompletTable
+	setlocal omnifunc=OmniComplet
 
 	" Restore the tree if 
 	" the TREE buffer exist. Check, if the buffer is displayed in
@@ -1318,10 +1321,69 @@ endfunction
 "
 " The function is doing this:
 "
-" 1. get the word in front of the current cursor position
-" 2. 
 "
-" SELECT * from treffer.ERGEBNIS_IDSSS
+function! OmniComplet(findstart,base)
+	echo "Enter OmniComplet"
+	let l:result=CompletTable(a:findstart,a:base)
+
+	if !empty(l:result)
+		return l:result
+	endif
+
+	let l:result=CompletFunction(a:findstart,a:base)	
+	return l:result
+endfunction
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Complet a package.function name element using the
+" omni-complet-function of VIM
+"
+function! CompletFunction(findstart,base)
+	echo "-->CompletFunction"
+	" read the current cursor position
+	let l:currentline=line('.')
+	let l:currentcol=col('.')
+
+	"   v_somename := dbms_output.
+	" find somthing that looks like t. or tt. 
+	let l:shortcutpattern="\\s\[a-zA-Z0-9$_\]\\+\\."
+	let l:pos_start=searchpos(l:shortcutpattern,"bcWn")
+	let l:pos_end=searchpos(l:shortcutpattern,"ebcWn")
+	echo pos_start
+	echo pos_end
+
+	if l:currentline != get(l:pos_start,0)
+		return []
+	endif
+
+	if a:findstart==1
+		return get(l:pos_end,1)
+	endif
+
+	" found in current line. Now extract the name of the package
+	let l:line = getline(".")
+	let l:package_name = strpart(l:line,get(l:pos_start,1),get(l:pos_end,1)-get(l:pos_start,1)-1)
+	echo l:package_name	
+
+	" get the function and procedure names
+	let l:package_functions=GetPackageFunctions(l:package_name)
+        
+	" add all function names which match with the base-string to the
+	" result
+	let l:result = []
+	let l:basePattern = toupper(a:base) . ".*"
+	for currentfunction in l:package_functions 
+		if toupper(currentfunction) =~ l:basePattern 
+			call add(l:result,currentfunction)
+		endif	
+	endfor	
+
+	return l:result
+endfunction	
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Complet a table.column name element using the
+" omni-complet-function of VIM
 "
 function! CompletTable(findstart,base)
 	" read the current cursor position
@@ -1333,7 +1395,7 @@ function! CompletTable(findstart,base)
 	let l:pos_start=searchpos(l:shortcutpattern,"bcWn")
 	let l:pos_end=searchpos(l:shortcutpattern,"ebcWn")
 	if l:currentline != get(l:pos_start,0)
-		return -1
+		return []
 	endif
 
 	if a:findstart==1
@@ -1344,11 +1406,11 @@ function! CompletTable(findstart,base)
 	let l:line = getline(".")
 	let l:table_shortcut = strpart(l:line,get(l:pos_start,1)-1,get(l:pos_end,1)-get(l:pos_start,1))
 
-" now find the name of the table: 
-" SELECT * FROM ergebnis t where t.
-" SELECT d.ID FROM
-"  treffer d 
-"  where d.ID=12;
+	" now find the name of the table: 
+	" SELECT * FROM ergebnis t where t.
+	" SELECT d.ID FROM
+	"  treffer d 
+	"  where d.ID=12;
 	"
 	" Find <somename><whitespace><table_shortcut>
 	" Find forward and backward - take the one that closed to the cursor
@@ -1384,18 +1446,19 @@ function! CompletTable(findstart,base)
 	" get the columns of the table
 	let l:columns=GetColumns(l:tablename)
         
-	" find the column-start in the list of column names
-	let l:colindex=match(l:columns,'\c' . a:base)	
-	" call input("Match for:" . a:base . " = " . string(l:colindex))
-	
-	" check, if something has been matched
-	if l:colindex<0
-		return -1 " nothing found
-	endif
+	" put all matching column names into the result list
+	let l:result = []
+	let l:pattern = toupper(a:base) . ".*"
+	for currentcol in l:columns
+		if toupper(currentcol) =~ l:pattern
+			call add(l:result,currentcol)
+		endif	
+	endfor	
 
 	" add the base tag
-	let l:columns = add(l:columns,a:base)	
-	return l:columns
+	" let l:result = add(l:result,a:base)	
+	call sort(l:result)
+	return l:result
 endfunction
 
 
@@ -1433,7 +1496,15 @@ function! GetColumns(TableName)
 	endif
 
 	" get the content of the buffer as a list
-	let l:result=getline(1,'$')
+	let l:lines=getline(1,'$')
+
+	" remove empty lines
+	let l:result = []
+	for currentline in l:lines	
+		if len(currentline) > 0 
+			call add(l:result,currentline)
+		endif	
+	endfor	
 
 	" delete the buffer
 	silent execute 'bd!'
@@ -1441,6 +1512,73 @@ function! GetColumns(TableName)
 	return l:result
 endfunction
 
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Get a list of all functions or procedures within a package
+"
+" The function does the following:
+" 1. create a temporary file
+" 2. write the SQL commands to describe the package
+" 3. execute the command and store the result in the string
+" 4. parse the string an write the entries into a LIST
+" 5. return the LIST
+"
+function! GetPackageFunctions(PackageName)
+	if CheckConnection () != 0
+		return
+	endif
+	
+	" remember th activ buffer 
+	let l:cur_buf = bufnr("%")
+
+	" build the SQL command to list the colunm names
+	silent execute 'new '
+	let l:sql_cmd = "DESCRIBE " . a:PackageName
+	call append (0,"set pagesize 0") 
+	call append (0,"set feedback off") 
+	call append (0,"SET linesize 80")
+	call append (0,"SET DESCRIBE DEPTH 1")
+	call append (0,"SET DESCRIBE INDENT ON")
+	call append (0,"SET DESCRIBE LINE OFF")
+	call append ("$",l:sql_cmd) 
+
+	" execute the SQL command
+	%call SqlPlus()
+
+	" check for errors
+	if s:sqlerr != 0 
+		return []
+	endif
+
+	" remove all lines that do not describe a function or a procedure
+	:silent! 1,$s/^ .\+$\n//g
+
+	" remove the keywords FUNCTION and PROCEDURE
+	:silent! 1,$s/^[A-Za-z0-9_$]\+\s/
+
+	" get the content of the buffer as a list
+	let l:functionlines = getline(1,'$')
+	
+	" delete the buffer
+	silent execute 'bd!'
+
+	" check for the text ERROR: in the first line
+	if len(l:functionlines) > 0 
+		if toupper(get(l:functionlines,0)) =~ "^ERROR:.*"
+			return []
+		endif	
+	endif	
+
+
+	" remove all empty lines
+	let l:result = []
+	for currentline in l:functionlines
+		if len(currentline) > 0 
+			call add(l:result,currentline)
+		endif	
+	endfor
+
+	return l:result
+endfunction
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Get the source code of the given object name and object type
@@ -1791,7 +1929,7 @@ function! LoadAutoCommands()
 	if s:autocmd_loaded != 1
 		let s:autocmd_loaded = 1
 		" autocmd BufEnter * echo "Kalle"
-		autocmd BufEnter * setlocal omnifunc=CompletTable
+		autocmd BufEnter * setlocal omnifunc=OmniComplet
 	endif	
 endfunction
 

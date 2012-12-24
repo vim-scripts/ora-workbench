@@ -1,4 +1,4 @@
-*orawb.txt*      For Vim version 7.2.  Last change: 2011-10-13
+*orawb.txt*      For Vim version 7.2.  Last change: 2012-12-24
 
 
 		  VIM REFERENCE MANUAL    by rkaltenthaler@yahooooo.com
@@ -235,11 +235,18 @@ in 'normal' mode. The result is displayed in the log-window of the
 ORA-Workbench. 
 
 
-The worksheet window support the 'omni-complations' function CTRL-X-CTRL-O.
+The worksheet window support the 'omni-completion' function CTRL-X-CTRL-O.
 The function is able to complete column name. Example:
 
 	SELECT b.* from books b where b.<-- press CTRL-X-CTRL-O here to get
 the column list for the table 'books'.
+
+The 'omni-completion' function is also able to list matching package function
+/ procedure names. Example:
+
+	BEGIN
+		dbms_output.<-- press CTRL-X-CTRL-O here to get a list
+of all funtions / proedures in the package "dbms_output".
 
 Note: 	a) SQL statements must be terminated with a ';'
  	b) PL/SQL blocks must be terminated with a '/'

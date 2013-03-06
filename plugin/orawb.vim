@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.6
+" Version: 1.7
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2012-12-24 17:33:32 +0100 (Mon, 24 Dec 2012) $
-" Id : $Id: orawb.vim 285 2012-12-24 16:33:32Z nikita $
+" Last Modified: $Date: 2013-03-06 23:02:05 +0100 (Wed, 06 Mar 2013) $
+" Id : $Id: orawb.vim 285M 2013-03-06 22:02:05Z (local) $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -81,6 +81,7 @@ if exists("loaded_sqlrc")
 	delfunction SetupStatusLine
 	delfunction ChangeConnection
 	delfunction ChangeConnection2
+	delfunction CreateSourceForSynonym
 	"  finish
 endif
 
@@ -348,6 +349,7 @@ function WBOpenObject()
 	let fktdir["VIEW"]=function("SelectDataFromObject")
 	let fktdir["TRIGGER"]=function("GetSourceForObject")
 	let fktdir["SCHEMA"]=function("WBChangeConnection2")
+	let fktdir["SYNONYM"]=function("CreateSourceForSynonym")
 
 	" check if a function exits
 	if has_key(fktdir,ObjInfo.type)
@@ -1619,6 +1621,89 @@ function! GetSourceForObject(ObjectName,ObjectType)
 	call WBKeyMappingCompiler()
 endfunction
 
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Create the DDL code for a SYNONYM
+"
+function! CreateSourceForSynonym(ObjectName,ObjectType)
+	if CheckConnection () != 0
+		return
+	endif
+
+	" goto the window in the upper let corner
+	4wincmd k
+	4wincmd l
+
+	new
+
+let l:cmd=      "dbms_output.put_line('CREATE OR REPLACE SYNONYM "
+let l:cmd=l:cmd.'"'
+let l:cmd=l:cmd."'||v_synonym.SYNONYM_NAME||'"
+let l:cmd=l:cmd.'" FOR "'
+let l:cmd=l:cmd."'||v_synonym.TABLE_NAME||'"
+let l:cmd=l:cmd.'";'
+let l:cmd=l:cmd."');"
+
+let l:cmd_owner=            "dbms_output.put_line('CREATE OR REPLACE SYNONYM "
+let l:cmd_owner=l:cmd_owner.'"'
+let l:cmd_owner=l:cmd_owner."'||v_synonym.SYNONYM_NAME||'"
+let l:cmd_owner=l:cmd_owner.'" FOR "'
+let l:cmd_owner=l:cmd_owner."'||v_synonym.TABLE_OWNER||'"
+let l:cmd_owner=l:cmd_owner.'"."'
+let l:cmd_owner=l:cmd_owner."'||v_synonym.TABLE_NAME||'"
+let l:cmd_owner=l:cmd_owner.'";'
+let l:cmd_owner=l:cmd_owner."');"
+
+
+let l:cmdnet=      "dbms_output.put_line('CREATE OR REPLACE SYNONYM "
+let l:cmdnet=l:cmdnet.'"'
+let l:cmdnet=l:cmdnet."'||v_synonym.SYNONYM_NAME||'"
+let l:cmdnet=l:cmdnet.'" FOR "'
+let l:cmdnet=l:cmdnet."'||v_synonym.TABLE_NAME||'"
+let l:cmdnet=l:cmdnet.'"@'
+let l:cmdnet=l:cmdnet."'||v_synonym.DB_LINK||';');"
+
+let l:cmdnet_owner=      "dbms_output.put_line('CREATE OR REPLACE SYNONYM "
+let l:cmdnet_owner=l:cmdnet_owner.'"'
+let l:cmdnet_owner=l:cmdnet_owner."'||v_synonym.SYNONYM_NAME||'"
+let l:cmdnet_owner=l:cmdnet_owner.'" FOR "'
+let l:cmdnet_owner=l:cmdnet_owner."'||v_synonym.TABLE_OWNER||'"
+let l:cmdnet_owner=l:cmdnet_owner.'"."'
+let l:cmdnet_owner=l:cmdnet_owner."'||v_synonym.TABLE_NAME||'"
+let l:cmdnet_owner=l:cmdnet_owner.'"@'
+let l:cmdnet_owner=l:cmdnet_owner."'||v_synonym.DB_LINK||';');"
+
+call append("$","set serveroutput on size 1000000")
+call append("$","set linesize 1024")
+call append("$","declare")
+call append("$","v_synonym USER_SYNONYMS%rowtype;")
+call append("$","begin")
+call append("$","select * into v_synonym from USER_SYNONYMS where SYNONYM_NAME = '".a:ObjectName."';")
+call append("$","if v_synonym.DB_LINK is null then")
+call append("$","if v_synonym.TABLE_OWNER is null then")
+call append("$",l:cmd)
+call append("$","else")
+call append("$",l:cmd_owner)
+call append("$","end if;")
+call append("$","else")
+call append("$","if v_synonym.TABLE_OWNER is null then")
+call append("$",l:cmdnet)
+call append("$","else")
+call append("$",l:cmdnet_owner)
+call append("$","end if;")
+call append("$","end if;")
+call append("$","end;")
+call append("$","/")
+
+	%call SqlPlus()
+	1join
+	2,$d
+
+	setlocal nomodified
+	setlocal filetype=sql
+	
+	" add commands
+	call WBKeyMappingCompiler()
+endfunction
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Display a SYNONYM 
 "

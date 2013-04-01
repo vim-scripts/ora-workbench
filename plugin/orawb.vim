@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.7
+" Version: 1.8
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2013-03-06 23:02:05 +0100 (Wed, 06 Mar 2013) $
-" Id : $Id: orawb.vim 285M 2013-03-06 22:02:05Z (local) $
+" Last Modified: $Date: 2013-04-01 22:37:42 +0200 (Mon, 01 Apr 2013) $
+" Id : $Id: orawb.vim 324 2013-04-01 20:37:42Z nikita $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -804,6 +804,9 @@ function! WBInitWorksheet()
 	
 	" add commands
 	call WBKeyMappingGeneral()
+	
+	" If the user saves the worksheet, remove the nowrite buffer type
+	:au BufWritePost <buffer> set buftype=""
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""

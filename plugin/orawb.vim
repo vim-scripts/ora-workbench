@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.8
+" Version: 1.9
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2013-04-01 22:37:42 +0200 (Mon, 01 Apr 2013) $
-" Id : $Id: orawb.vim 324 2013-04-01 20:37:42Z nikita $
+" Last Modified: $Date: 2013-04-09 10:10:38 +0200 (Tue, 09 Apr 2013) $
+" Id : $Id: orawb.vim 325 2013-04-09 08:10:38Z nikita $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -350,6 +350,7 @@ function WBOpenObject()
 	let fktdir["TRIGGER"]=function("GetSourceForObject")
 	let fktdir["SCHEMA"]=function("WBChangeConnection2")
 	let fktdir["SYNONYM"]=function("CreateSourceForSynonym")
+	let fktdir["DATABASE LINK"]=function("DisplayDBLink")
 
 	" check if a function exits
 	if has_key(fktdir,ObjInfo.type)
@@ -370,11 +371,12 @@ function! WBLoad()
 		return
 	endif
 
-	" revmove current content
+	" remove current content
 	:1,$d
 	
 	" generate load-script and call SqlPlus to execute it
 	call WBLoadObjectType()
+	" return
 
 	" inform the user: we are loading...
 	echo "loading..."
@@ -904,7 +906,7 @@ function! WBLoadObjectType()
 	call append("$","SELECT concat('    ','------') from dual;")
 
 	" load all types
-	let objlist = [ "VIEW","SEQUENCE","QUEUE","FUNCTION","PROCEDURE","PACKAGE","PACKAGE BODY","SYNONYM","TYPE", "TYPE BODY"]
+	let objlist = [ "VIEW","SEQUENCE","QUEUE","FUNCTION","PROCEDURE","PACKAGE","PACKAGE BODY","SYNONYM","TYPE", "TYPE BODY","DATABASE LINK"]
 	for item in objlist
 		call append("$","PROMPT [".item."]")
 		call append("$","SELECT concat('    ',concat(decode(STATUS,'VALID','','(!)'),OBJECT_NAME)) DDNAME")
@@ -1795,6 +1797,17 @@ function! DisplayIndex(ObjectName,ObjectType)
 	" go back to original window
  	execute bufwinnr(l:currentBuffer) . 'wincmd w'
 	setlocal nomodified
+endfunction
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Display a Database Link 
+"
+" Do the following:
+"	- call DisplaySingleRecord to display the line
+"	describing the queue with the name ObjectName from
+"	the view USER_DB_LINKS
+"
+function! DisplayDBLink(ObjectName,ObjectType)
+	call DisplaySingleRecord("Database Link " . a:ObjectName,"USER_DB_LINKS","DB_LINK='".a:ObjectName . "'")
 endfunction
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Display a Sequence 

@@ -1,8 +1,8 @@
 " Purpose: Workbench for Oracle Databases
-" Version: 1.9
+" Version: 1.10
 " Author: rkaltenthaler@yahoooooo.com
-" Last Modified: $Date: 2013-04-09 10:10:38 +0200 (Tue, 09 Apr 2013) $
-" Id : $Id: orawb.vim 325 2013-04-09 08:10:38Z nikita $
+" Last Modified: $Date: 2013-12-24 02:53:14 +0100 (Tue, 24 Dec 2013) $
+" Id : $Id: orawb.vim 486M 2013-12-24 01:53:14Z (local) $
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 "
 " Description:
@@ -46,6 +46,7 @@ if exists("loaded_sqlrc")
 	delfunction WBKeyMappingGeneral
 	delfunction WBKeyMappingCompiler
 	delfunction WBSqlPlus
+	delfunction WBDdlForObject
 	delfunction CreateTmpBuffer
 	delfunction CheckModified
 	delfunction CheckConnection
@@ -82,6 +83,7 @@ if exists("loaded_sqlrc")
 	delfunction ChangeConnection
 	delfunction ChangeConnection2
 	delfunction CreateSourceForSynonym
+	delfunction DdlForNamedObject
 	"  finish
 endif
 
@@ -350,7 +352,6 @@ function WBOpenObject()
 	let fktdir["TRIGGER"]=function("GetSourceForObject")
 	let fktdir["SCHEMA"]=function("WBChangeConnection2")
 	let fktdir["SYNONYM"]=function("CreateSourceForSynonym")
-	let fktdir["DATABASE LINK"]=function("DisplayDBLink")
 
 	" check if a function exits
 	if has_key(fktdir,ObjInfo.type)
@@ -371,12 +372,11 @@ function! WBLoad()
 		return
 	endif
 
-	" remove current content
+	" revmove current content
 	:1,$d
 	
 	" generate load-script and call SqlPlus to execute it
 	call WBLoadObjectType()
-	" return
 
 	" inform the user: we are loading...
 	echo "loading..."
@@ -621,7 +621,8 @@ function WBShow(...)
 		call WBKeyMappingGeneral()
 
 		" show the statusline with USER@HOST
-		execute "setlocal  statusline=[Yd][Ym][Yo][Yu]"
+		" execute "setlocal  statusline=[Yd][Ym][Yo][Yu]"
+		execute "setlocal  statusline=Y[d][i][m][o][p][u]"
 		
 		" load commands for the tree-buffer
 		command!-buffer Ymake call WBCompileObject()
@@ -629,6 +630,7 @@ function WBShow(...)
 		command!-buffer Yopen call WBOpenObject()
 		command!-buffer Yinvalid call ListInvalidObjects()
 		command!-buffer Yupdate call WBLoad()
+		command!-buffer Yprint call WBDdlForObject()
 		
 		" load the short-cuts for the tree-buffer
 		nmap <buffer> Ys Y:call WBShow() <C-M>
@@ -639,6 +641,7 @@ function WBShow(...)
 		nmap <buffer> Yu Y:call WBLoad() <C-M>
 		nmap <buffer> Ym Y:call WBCompileObject() <C-M>
 		nmap <buffer> Yi Y:call ListInvalidObjects() <C-M>
+		nmap <buffer> Yp Y:call WBDdlForObject() <C-M>
 		nmap <buffer> +  zo
 		nmap <buffer> -  zc
 	endif
@@ -748,7 +751,8 @@ function WBChangeConnection2(NewUser,ObjType)
 		call WBLoad()
 
 		" show the statusline with USER@HOST
-		call SetupStatusLine("[Yd][Ym][Yo][Yu]")
+		" call SetupStatusLine("[Yd][Ym][Yo][Yu]")
+		call SetupStatusLine("Y[d][i][m][o][p][u]")
 	endif
 
 endfunction
@@ -801,7 +805,7 @@ function! WBInitWorksheet()
 	setlocal ignorecase
 	
 	" show the statusline with USER@HOST
-	call SetupStatusLine("[Yd][Ym]")
+	call SetupStatusLine("Y[d][m]")
 
 	
 	" add commands
@@ -906,7 +910,7 @@ function! WBLoadObjectType()
 	call append("$","SELECT concat('    ','------') from dual;")
 
 	" load all types
-	let objlist = [ "VIEW","SEQUENCE","QUEUE","FUNCTION","PROCEDURE","PACKAGE","PACKAGE BODY","SYNONYM","TYPE", "TYPE BODY","DATABASE LINK"]
+	let objlist = [ "VIEW","SEQUENCE","QUEUE","FUNCTION","PROCEDURE","PACKAGE","PACKAGE BODY","SYNONYM","TYPE", "TYPE BODY"]
 	for item in objlist
 		call append("$","PROMPT [".item."]")
 		call append("$","SELECT concat('    ',concat(decode(STATUS,'VALID','','(!)'),OBJECT_NAME)) DDNAME")
@@ -1243,6 +1247,18 @@ function! SwitchToDesc()
 endfunction
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Generate DDL for the tree selection
+"
+" The function call DBMS_METADATA.get_ddl
+"
+function! WBDdlForObject ()
+	" Get information about the object
+	let ObjInfo=WBGetObjectInfoFromTree()
+	call DdlForNamedObject(ObjInfo.name,ObjInfo.type)
+endfunction
+
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Describe the object under the cursor in  the tree window
 "
 " The function calls SQLPLUS>desc
@@ -1290,6 +1306,43 @@ function! DescribeObject()
 	let l:object = expand("<cword>")
 	
 	call DescribeNamedObject(l:object,"")
+endfunction
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Generate DDL for the given object
+"
+" Parameter: 	[in] Object Name
+" 		[in] Object Type 
+"
+" The function calls DBMS_METADATA.get_ddl
+"
+function! DdlForNamedObject(ObjectName,ObjectType)
+	if CheckConnection () != 0
+		return
+	endif
+
+	" remember the number of the current activ buffer
+	let currentBuffer=SwitchToDesc()
+
+
+	" create the SQL statements for describe and execute
+	call append(0,"set heading off pages 9999 lines 100 trimspool on longchunksize 100")
+	call append(1,"set long 200000")
+	call append(2,"set VERIFY OFF")
+	call append(3,"set FEEDBACK OFF")
+	call append(4,"execute DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.session_transform,'SEGMENT_ATTRIBUTES',false);")
+	call append(5,"execute DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.session_transform,'SQLTERMINATOR',true);")
+	call append(6,"execute DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.session_transform,'FORCE',false);")
+	call append(7,"select DBMS_METADATA.GET_DDL('".a:ObjectType."','".a:ObjectName."') from dual;")
+	
+	1,$call SqlPlus()
+
+	"delete the SQL> prompts
+	" normal dW+df 
+	setlocal ts=8 nomodified
+
+	" go back to original window
+ 	execute bufwinnr(currentBuffer) . 'wincmd w'
 endfunction
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -1797,17 +1850,6 @@ function! DisplayIndex(ObjectName,ObjectType)
 	" go back to original window
  	execute bufwinnr(l:currentBuffer) . 'wincmd w'
 	setlocal nomodified
-endfunction
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Display a Database Link 
-"
-" Do the following:
-"	- call DisplaySingleRecord to display the line
-"	describing the queue with the name ObjectName from
-"	the view USER_DB_LINKS
-"
-function! DisplayDBLink(ObjectName,ObjectType)
-	call DisplaySingleRecord("Database Link " . a:ObjectName,"USER_DB_LINKS","DB_LINK='".a:ObjectName . "'")
 endfunction
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Display a Sequence 

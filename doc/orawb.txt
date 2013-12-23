@@ -154,6 +154,12 @@ Key mapping: Yw
 
 Open a new SQL worksheet.
 
+:Yp[rint]						*Yprint*
+
+Key mapping: Yp
+
+The command prints the DDL for the selected object in the tree.
+
 ===============================================================================
 5. The Object Tree						*tree*
 
@@ -223,6 +229,23 @@ The following commands can  be used in the tree:
 
 	Yu[pdate]	update the content of the tree
 							
+	:Yi[nvalid]	list all invalid objects
+
+	:Yp[rint]	print the DDL for the selected object of the following type:
+			TABLE
+			INDEX
+			CONSTRAINT
+			TRIGGER
+			VIEW
+			SEQUENCE
+			FUNCTION
+			PROCEDURE
+			PACKAGE
+			PACKAGE BODY
+			SYNONYM
+			TYPE
+			TYPE BODY
+
 ===============================================================================
 6. The SQL Worksheet						*worksheet*
 
